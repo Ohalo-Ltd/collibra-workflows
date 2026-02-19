@@ -1,0 +1,5 @@
+file_name,suggested_action,retention_tag,security_classification,notes
+Targeting_Package_TGT-0142_2016-06-30_CUI.docx,Disposition Review,RET_TARGETING_7Y,CUI,Use this for full end-to-end review and approval path
+CDE_Worksheet_TGT-0142_2016-06-30_CUI.csv,Schedule,RET_TARGETING_7Y,CUI,Use this for schedule and retention branch
+Chat_Transcript_2024-05-01_CUI.txt,No Action,RET_CHAT_180D,CUI,Use this to show quick triage close path
+Behavioral_Health_Referral_2017-02-10_CUI_MED.pdf,Place Hold,RET_MEDICAL_7Y,CUI,Use this for legal hold branch
