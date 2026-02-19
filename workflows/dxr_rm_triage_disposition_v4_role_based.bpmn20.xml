@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.collibra.com/apiv2">
+
+  <process id="dxr_rm_triage_disposition_v4_role_based"
+           name="DXR RM Triage Disposition Review V4 Embedded Forms (Role Based)"
+           isExecutable="true">
+
+    <startEvent id="start_from_file" name="Start (from File)">
+      <outgoing>flow_start_intake</outgoing>
+    </startEvent>
+
+    <userTask id="task_rm_intake"
+              name="RM Intake (Business Steward)"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="fileAssetId" name="File Asset ID" type="string" required="true"/>
+        <flowable:formProperty id="actionRequested" name="Action Requested" type="enum" required="true">
+          <flowable:value id="schedule" name="Schedule"/>
+          <flowable:value id="place_hold" name="Place Hold"/>
+          <flowable:value id="disposition_review" name="Disposition Review"/>
+          <flowable:value id="no_action" name="No Action"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="notes" name="Notes" type="string"/>
+      </extensionElements>
+      <incoming>flow_start_intake</incoming>
+      <outgoing>flow_intake_route</outgoing>
+    </userTask>
+
+    <exclusiveGateway id="gateway_route" name="Route Request" default="flow_route_no_action">
+      <incoming>flow_intake_route</incoming>
+      <outgoing>flow_route_schedule</outgoing>
+      <outgoing>flow_route_hold</outgoing>
+      <outgoing>flow_route_disposition</outgoing>
+      <outgoing>flow_route_no_action</outgoing>
+    </exclusiveGateway>
+
+    <userTask id="task_schedule_retention"
+              name="Assign Schedule and Retention (Records Officer)"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="recordScheduleItem" name="Record Schedule Item" type="string"/>
+        <flowable:formProperty id="retentionTag" name="Retention Tag" type="string"/>
+        <flowable:formProperty id="recordDesignationDate" name="Record Designation Date (YYYY-MM-DD)" type="string"/>
+        <flowable:formProperty id="dispositionEligibleDate" name="Disposition Eligible Date (YYYY-MM-DD)" type="string"/>
+        <flowable:formProperty id="essentialRecordsPriority" name="Essential Records Priority" type="enum">
+          <flowable:value id="yes" name="Yes"/>
+          <flowable:value id="no" name="No"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="securityClassification" name="Security Classification" type="enum">
+          <flowable:value id="unclassified" name="UNCLASSIFIED"/>
+          <flowable:value id="cui" name="CUI"/>
+          <flowable:value id="secret" name="SECRET"/>
+          <flowable:value id="top_secret" name="TOP SECRET"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="notesScheduling" name="Notes" type="string"/>
+      </extensionElements>
+      <incoming>flow_route_schedule</incoming>
+      <outgoing>flow_schedule_end</outgoing>
+    </userTask>
+
+    <endEvent id="end_scheduled" name="Scheduled Tagged">
+      <incoming>flow_schedule_end</incoming>
+    </endEvent>
+
+    <userTask id="task_legal_hold"
+              name="Apply Confirm Hold (Legal)"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="holdStatus" name="Hold Status" type="enum" required="true">
+          <flowable:value id="on_hold" name="On Hold"/>
+          <flowable:value id="not_on_hold" name="Not On Hold"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="holdMatterId" name="Hold Matter ID" type="string"/>
+        <flowable:formProperty id="holdReason" name="Hold Reason" type="string"/>
+        <flowable:formProperty id="notesLegal" name="Notes" type="string"/>
+      </extensionElements>
+      <incoming>flow_route_hold</incoming>
+      <outgoing>flow_hold_end</outgoing>
+    </userTask>
+
+    <endEvent id="end_hold_applied" name="Hold Applied">
+      <incoming>flow_hold_end</incoming>
+    </endEvent>
+
+    <userTask id="task_disposition_review"
+              name="Disposition Review (Records Manager)"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="dispositionDecision" name="Disposition Decision" type="enum" required="true">
+          <flowable:value id="destroy" name="Destroy"/>
+          <flowable:value id="transfer" name="Transfer"/>
+          <flowable:value id="extend_retention" name="Extend Retention"/>
+          <flowable:value id="no_action" name="No Action"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="confirmNotOnHold" name="Confirm Not On Hold" type="enum" required="true">
+          <flowable:value id="yes" name="Yes"/>
+          <flowable:value id="no" name="No"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="notesDisposition" name="Notes" type="string"/>
+      </extensionElements>
+      <incoming>flow_route_disposition</incoming>
+      <outgoing>flow_disposition_to_decision</outgoing>
+    </userTask>
+
+    <exclusiveGateway id="gateway_disposition_decision" name="Disposition Decision" default="flow_decision_no_action">
+      <incoming>flow_disposition_to_decision</incoming>
+      <outgoing>flow_decision_destroy</outgoing>
+      <outgoing>flow_decision_transfer</outgoing>
+      <outgoing>flow_decision_extend</outgoing>
+      <outgoing>flow_decision_no_action</outgoing>
+    </exclusiveGateway>
+
+    <userTask id="task_legal_hold_check"
+              name="Legal Hold Check"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="confirmNoHoldForDestroy" name="Confirm No Hold for Destroy" type="enum" required="true">
+          <flowable:value id="yes" name="Yes"/>
+          <flowable:value id="no" name="No"/>
+        </flowable:formProperty>
+      </extensionElements>
+      <incoming>flow_decision_destroy</incoming>
+      <outgoing>flow_destroy_to_ro_approval</outgoing>
+    </userTask>
+
+    <userTask id="task_destroy_approval"
+              name="Records Officer Approval Destroy"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="destroyApproval" name="Destroy Approval" type="enum" required="true">
+          <flowable:value id="approve" name="Approve"/>
+          <flowable:value id="reject" name="Reject"/>
+        </flowable:formProperty>
+        <flowable:formProperty id="destroyApprovalNotes" name="Notes" type="string"/>
+      </extensionElements>
+      <incoming>flow_destroy_to_ro_approval</incoming>
+      <outgoing>flow_destroy_approval_end</outgoing>
+    </userTask>
+
+    <endEvent id="end_destroy_approved" name="Approved for Destruction Demo">
+      <incoming>flow_destroy_approval_end</incoming>
+    </endEvent>
+
+    <userTask id="task_transfer_approval"
+              name="Records Officer Approve Transfer"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="transferApproval" name="Transfer Approval" type="enum" required="true">
+          <flowable:value id="approve" name="Approve"/>
+          <flowable:value id="reject" name="Reject"/>
+        </flowable:formProperty>
+      </extensionElements>
+      <incoming>flow_decision_transfer</incoming>
+      <outgoing>flow_transfer_end</outgoing>
+    </userTask>
+
+    <endEvent id="end_transfer_approved" name="Approved for Transfer Demo">
+      <incoming>flow_transfer_end</incoming>
+    </endEvent>
+
+    <userTask id="task_extend_retention"
+              name="Records Officer Update Retention"
+              flowable:candidateUsers="{role(Business Steward)}">
+      <extensionElements>
+        <flowable:formProperty id="updatedRetentionTag" name="Updated Retention Tag" type="string"/>
+        <flowable:formProperty id="updatedDispositionEligibleDate" name="Updated Disposition Eligible Date (YYYY-MM-DD)" type="string"/>
+      </extensionElements>
+      <incoming>flow_decision_extend</incoming>
+      <outgoing>flow_extend_end</outgoing>
+    </userTask>
+
+    <endEvent id="end_retention_updated" name="Retention Updated">
+      <incoming>flow_extend_end</incoming>
+    </endEvent>
+
+    <endEvent id="end_no_action" name="No Action">
+      <incoming>flow_route_no_action</incoming>
+      <incoming>flow_decision_no_action</incoming>
+    </endEvent>
+
+    <sequenceFlow id="flow_start_intake" sourceRef="start_from_file" targetRef="task_rm_intake"/>
+    <sequenceFlow id="flow_intake_route" sourceRef="task_rm_intake" targetRef="gateway_route"/>
+
+    <sequenceFlow id="flow_route_schedule" sourceRef="gateway_route" targetRef="task_schedule_retention">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${actionRequested == 'schedule'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_route_hold" sourceRef="gateway_route" targetRef="task_legal_hold">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${actionRequested == 'place_hold'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_route_disposition" sourceRef="gateway_route" targetRef="task_disposition_review">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${actionRequested == 'disposition_review'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_route_no_action" sourceRef="gateway_route" targetRef="end_no_action"/>
+
+    <sequenceFlow id="flow_schedule_end" sourceRef="task_schedule_retention" targetRef="end_scheduled"/>
+    <sequenceFlow id="flow_hold_end" sourceRef="task_legal_hold" targetRef="end_hold_applied"/>
+
+    <sequenceFlow id="flow_disposition_to_decision" sourceRef="task_disposition_review" targetRef="gateway_disposition_decision"/>
+
+    <sequenceFlow id="flow_decision_destroy" sourceRef="gateway_disposition_decision" targetRef="task_legal_hold_check">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${dispositionDecision == 'destroy'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_decision_transfer" sourceRef="gateway_disposition_decision" targetRef="task_transfer_approval">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${dispositionDecision == 'transfer'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_decision_extend" sourceRef="gateway_disposition_decision" targetRef="task_extend_retention">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${dispositionDecision == 'extend_retention'}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flow_decision_no_action" sourceRef="gateway_disposition_decision" targetRef="end_no_action"/>
+
+    <sequenceFlow id="flow_destroy_to_ro_approval" sourceRef="task_legal_hold_check" targetRef="task_destroy_approval"/>
+    <sequenceFlow id="flow_destroy_approval_end" sourceRef="task_destroy_approval" targetRef="end_destroy_approved"/>
+
+    <sequenceFlow id="flow_transfer_end" sourceRef="task_transfer_approval" targetRef="end_transfer_approved"/>
+    <sequenceFlow id="flow_extend_end" sourceRef="task_extend_retention" targetRef="end_retention_updated"/>
+
+  </process>
+</definitions>
