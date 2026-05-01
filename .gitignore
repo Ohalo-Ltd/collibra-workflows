@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Claude Code workspace
+.claude/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Groovy / Java build artifacts (in case workflows get compiled locally)
+*.class
+target/
+build/
+out/
+
+# Logs
+*.log
