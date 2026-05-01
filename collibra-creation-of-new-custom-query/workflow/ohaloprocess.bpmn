@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:flowable="http://flowable.org/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" xmlns:design="http://flowable.org/design" typeLanguage="http://www.w3.org/2001/XMLSchema" expressionLanguage="http://www.w3.org/1999/XPath" targetNamespace="http://www.collibra.com/apiv2" exporter="Flowable Design" exporterVersion="2025.1.08" design:palette="flowable-core-process-palette">
+  <collaboration id="Collaboration">
+    <participant id="pool1" name="Pool" processRef="ohaloprocess"></participant>
+  </collaboration>
+  <process id="ohaloprocess" name="query creation" isExecutable="true" flowable:candidateStarterGroups="flowableUser">
+    <documentation>Create a query for unstructured data, and retrieve path to files that satisfy the query.</documentation>
+    <extensionElements>
+      <design:stencilid><![CDATA[BPMNDiagram]]></design:stencilid>
+      <design:creationdate><![CDATA[2025-03-25T15:37:46.381Z]]></design:creationdate>
+      <design:modificationdate><![CDATA[2026-04-29T23:30:05.537Z]]></design:modificationdate>
+    </extensionElements>
+    <laneSet id="laneSet_ohaloprocess">
+      <lane id="lane1" name="Lane">
+        <flowNodeRef>formTask1</flowNodeRef>
+        <flowNodeRef>scriptTask1</flowNodeRef>
+        <flowNodeRef>httpTask1</flowNodeRef>
+        <flowNodeRef>FormTask_1</flowNodeRef>
+        <flowNodeRef>startnoneevent1</flowNodeRef>
+        <flowNodeRef>endNoneEvent1</flowNodeRef>
+        <flowNodeRef>sequenceFlow2</flowNodeRef>
+        <flowNodeRef>sequenceFlow3</flowNodeRef>
+        <flowNodeRef>sequenceFlow5</flowNodeRef>
+        <flowNodeRef>SequenceFlow_2</flowNodeRef>
+        <flowNodeRef>sequenceFlow4</flowNodeRef>
+      </lane>
+    </laneSet>
+    <userTask id="formTask1" name="Creation of Condition form" flowable:candidateUsers="user(${initiator})" flowable:formKey="labelCreation" flowable:formFieldValidation="false">
+      <extensionElements>
+        <flowable:task-candidates-type><![CDATA[all]]></flowable:task-candidates-type>
+        <design:stencilid><![CDATA[FormTask]]></design:stencilid>
+        <design:candidatestype><![CDATA[all]]></design:candidatestype>
+        <design:activestaterendering><![CDATA[fullAccess]]></design:activestaterendering>
+        <design:completedstaterendering><![CDATA[hidden]]></design:completedstaterendering>
+        <design:taskinputmappingtype><![CDATA[allowed]]></design:taskinputmappingtype>
+      </extensionElements>
+    </userTask>
+    <scriptTask id="scriptTask1" name="creation of query" scriptFormat="groovy" flowable:autoStoreVariables="false">
+      <extensionElements>
+        <design:stencilid><![CDATA[ScriptTask]]></design:stencilid>
+      </extensionElements>
+      <script><![CDATA[import com.collibra.dgc.core.api.dto.instance.asset.AddAssetRequest;
+import com.collibra.dgc.core.api.component.instance.AssetApi;
+import com.collibra.dgc.core.api.dto.instance.asset.SetAssetRelationsRequest;
+import com.collibra.dgc.core.api.dto.query.outputmodule.ExportJSONRequest;
+import com.collibra.dgc.core.api.dto.instance.comment.AddCommentRequest;
+import com.collibra.dgc.core.api.dto.instance.asset.SetAssetAttributesRequest;
+import com.collibra.dgc.core.api.dto.instance.attribute.AddAttributeRequest;
+import com.collibra.dgc.core.api.dto.instance.relation.AddRelationRequest;
+import groovy.json.JsonSlurper
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.net.URI
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
+def annotator = execution.getVariable("annotator")
+def extractor = execution.getVariable("extractor")
+def label = execution.getVariable("label")
+def requestPath = execution.getVariable("requestPath")
+def apiBaseUrl = execution.getVariable("apiBaseUrl")
+def authToken = execution.getVariable("authToken")
+
+def addAttributeToAsset(assetUuid,attributeValue,attributeTypeUuid) {
+if (attributeValue == null){
+return;
+}
+
+  attributeApi.addAttribute(AddAttributeRequest.builder()
+		.assetId(assetUuid)
+		.typeId(string2Uuid(attributeTypeUuid))
+		.value(attributeValue.toString())
+		.build())
+}
+
+def queryid=assetApi.addAsset(AddAssetRequest.builder()
+                  .displayName(conditionName)
+                  .domainId(string2Uuid(queryDomain))
+                  .name(conditionName)
+                  .typeId(string2Uuid(query_asset_type_id))              
+                  .build()).getId()
+
+loggerApi.info("query id : {$queryid}")
+
+if (annotator) 
+   {
+annotator_id=string2Uuid(annotator)
+annotator_asset = assetApi.getAsset(annotator_id);
+annotatorName = annotator_asset.getName();
+} else 
+   {
+     annotatorName=''
+   }
+
+if (extractor) 
+   {
+extractor_id=string2Uuid(extractor)
+extractor_asset = assetApi.getAsset(extractor_id);
+extractorName = extractor_asset.getName();
+}  else {
+     extractorName=''
+   }
+
+if (label) 
+{
+label_id=string2Uuid(label)
+label_asset = assetApi.getAsset(label_id);
+loggerApi.info("#### : {$label_asset}") 
+labelName = label_asset.getName();
+loggerApi.info("Label Name : {$labelName}"); 
+} else {
+  labelName=''
+}
+
+query_param=''
+def params=['labels.name:': labelName, 'annotators.name:': annotatorName, 'extractors.name:':extractorName]
+params.eachWithIndex {key,value,i->
+   if (value) {
+       new_value='"'+value +'"'
+       loggerApi.info("new : {$new_value}"); 
+       if (i in [0]) {query_param+=key+ new_value}  else 
+                 if (i in [1,2]){query_param+=' AND '+key+ new_value}
+        
+     
+   }}
+     
+
+loggerApi.info("query : {$query_param}") 
+
+
+description="The query is: "+query_param
+descrid="00000000-0000-0000-0000-000000003114"
+addAttributeToAsset(queryid,description,descrid)
+locationid="00000000-0000-0000-0000-000000000203"
+//  curl -X GET "https://collibra-demo-integration.dataxray.io/api/v1/files?q=labels.name%3A+%22CV%22+AND+annotators.name%3A%22Confidential%22" \
+//  -H "Authorization: Bearer "
+
+
+def encodedValue = URLEncoder.encode(query_param, StandardCharsets.UTF_8.toString())
+
+loggerApi.info("encoded : {$encodedValue}")   
+
+
+requestPath=apiBaseUrl+requestPath+encodedValue;
+
+
+def client = HttpClient.newHttpClient()
+def request = HttpRequest.newBuilder()
+    .uri(URI.create(requestPath))
+    .header("Authorization", "Bearer " + authToken)
+    .GET()
+    .build()
+
+// 3. Send and handle the response
+def response = client.send(request, HttpResponse.BodyHandlers.ofString())
+
+response_body=response.body()
+
+loggerApi.info("requestPath9 : {$requestPath}")  
+loggerApi.info("response :   code: "+response.statusCode()) 
+loggerApi.info("response :   response: "+response_body) 
+
+
+ 
+import groovy.json.JsonParserType
+
+//def slurper = new JsonSlurper().setType(JsonParserType.CHARACTER_SOURCE)
+//def data = slurper.parse(new File("large_file.json"))
+
+
+JsonSlurper parser = new JsonSlurper()
+json = parser.parseText(response_body)
+
+loggerApi.info("json !!!!!!::: ${json}")
+
+
+
+//json.fileName.each { fileName ->
+//      fn=fileName['fileName']
+//      loggerApi.info("FILENAME::: ${fn}")
+            //         }
+//execution.setVariable("fname",fn);
+
+def files = [['filename','path']]
+
+import com.fasterxml.jackson.databind.ObjectMapper
+def mapper = new ObjectMapper()
+def it = mapper.readerFor(Map).readValues(response_body)
+              count=0
+while (it.hasNextValue()) {
+    if (count ==20) {break }
+    def obj = it.nextValue()
+    path=obj.path
+    filename=obj.fileName
+    loggerApi.info("FILENAME::: ${filename}")
+    loggerApi.info("PATH::: ${path}")
+    files+=[[filename,path]]
+    count++
+    
+}
+loggerApi.info("FILES::: ${files}")
+              loggerApi.info("count::: ${count}")
+
+//def file = new File('output.csv')
+// Join inner lists with commas and outer list with line separators
+//file.text = files.collect { it.join(',') }.join(System.lineSeparator())
+
+execution.setVariable("files",files);
+execution.setVariable("count",count);
+
+import groovy.xml.MarkupBuilder
+
+def writer = new StringWriter()
+def html = new MarkupBuilder(writer)
+
+html.ul {
+    files.each { file ->
+        li(file)
+    }
+}
+writer_ready=writer.toString()
+
+addAttributeToAsset(queryid,files,locationid)
+execution.setVariable("writer_ready",writer_ready); 
+
+
+
+
+
+
+
+
+
+
+
+
+
+                 ]]></script>
+    </scriptTask>
+    <serviceTask id="httpTask1" name="HTTP" flowable:async="true" flowable:parallelInSameTransaction="false" flowable:type="http">
+      <documentation>STUB — currently disconnected from the main flow. Reserved for replacing the inline HttpClient call in scriptTask1 with a Flowable HTTP task that uses connection ${connectionname} for auth and base URL. To activate: rewire scriptTask1 -&gt; httpTask1 -&gt; FormTask_1 (drop sequenceFlow3, keep sequenceFlow5, add an edge from scriptTask1 to httpTask1) and remove the HttpClient block from the script.</documentation>
+      <extensionElements>
+        <flowable:field name="requestMethod">
+          <flowable:string><![CDATA[GET]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="requestUrl">
+          <flowable:expression><![CDATA[${requestPath}]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="requestBody">
+          <flowable:expression><![CDATA[${requestBody}]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="disallowRedirects">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="responseVariableName">
+          <flowable:string><![CDATA[httpResponse]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="ignoreException">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="saveRequestVariables">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="saveResponseParameters">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="saveResponseParametersTransient">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="saveResponseVariableAsJson">
+          <flowable:string><![CDATA[false]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="handleStatusCodes">
+          <flowable:string><![CDATA[406,400]]></flowable:string>
+        </flowable:field>
+        <design:stencilid><![CDATA[HttpTask]]></design:stencilid>
+        <design:http-connection-name><![CDATA[${connectionname}]]></design:http-connection-name>
+      </extensionElements>
+    </serviceTask>
+    <userTask id="FormTask_1" name="Query results" flowable:candidateUsers="user(${initiator})">
+      <documentation>There are ${count} of files. 
+${writer_ready}
+
+</documentation>
+      <extensionElements>
+        <design:stencilid><![CDATA[FormTask]]></design:stencilid>
+      </extensionElements>
+    </userTask>
+    <startEvent id="startnoneevent1" name="Start event" flowable:initiator="initiator" flowable:formFieldValidation="false">
+      <extensionElements>
+        <flowable:formProperty id="connectionname" name="connectionname" type="string" default="ohalo_noauth" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="requestPath" name="requestPath" type="string" variable="requestPath" default="/api/v1/files?q=" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="query_asset_type_id" name="query asset type id" type="string" default="019dcf97-3bac-72c3-8b59-b6ddbe8a8396" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="queryDomain" name="queryDomain" type="string" default="019dcf96-233a-72e1-bf25-8398b8c9146e" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="apiBaseUrl" name="apiBaseUrl" type="string" default="https://collibra-demo-integration.dataxray.io" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="authToken" name="authToken" type="string" readable="false" required="true"></flowable:formProperty>
+        <flowable:work-form-field-validation><![CDATA[false]]></flowable:work-form-field-validation>
+        <design:stencilid><![CDATA[StartNoneEvent]]></design:stencilid>
+        <design:workforminputmappingtype><![CDATA[allowed]]></design:workforminputmappingtype>
+        <design:display_ref_in_diagram><![CDATA[true]]></design:display_ref_in_diagram>
+      </extensionElements>
+    </startEvent>
+    <endEvent id="endNoneEvent1">
+      <extensionElements>
+        <design:stencilid><![CDATA[EndNoneEvent]]></design:stencilid>
+      </extensionElements>
+    </endEvent>
+    <sequenceFlow id="sequenceFlow2" sourceRef="formTask1" targetRef="scriptTask1">
+      <extensionElements>
+        <design:stencilid><![CDATA[SequenceFlow]]></design:stencilid>
+      </extensionElements>
+    </sequenceFlow>
+    <sequenceFlow id="sequenceFlow3" sourceRef="scriptTask1" targetRef="FormTask_1">
+      <extensionElements>
+        <design:stencilid><![CDATA[SequenceFlow]]></design:stencilid>
+      </extensionElements>
+    </sequenceFlow>
+    <sequenceFlow id="sequenceFlow5" sourceRef="httpTask1" targetRef="FormTask_1">
+      <extensionElements>
+        <design:stencilid><![CDATA[SequenceFlow]]></design:stencilid>
+      </extensionElements>
+    </sequenceFlow>
+    <sequenceFlow id="SequenceFlow_2" sourceRef="FormTask_1" targetRef="endNoneEvent1">
+      <extensionElements>
+        <design:stencilid><![CDATA[SequenceFlow]]></design:stencilid>
+      </extensionElements>
+    </sequenceFlow>
+    <sequenceFlow id="sequenceFlow4" sourceRef="startnoneevent1" targetRef="formTask1">
+      <extensionElements>
+        <design:stencilid><![CDATA[SequenceFlow]]></design:stencilid>
+      </extensionElements>
+    </sequenceFlow>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Collaboration">
+    <bpmndi:BPMNPlane bpmnElement="Collaboration" id="BPMNPlane_Collaboration">
+      <bpmndi:BPMNShape bpmnElement="pool1" id="BPMNShape_pool1">
+        <omgdc:Bounds height="257.0" width="1059.0" x="75.0" y="165.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="lane1" id="BPMNShape_lane1">
+        <omgdc:Bounds height="257.0" width="1029.0" x="105.0" y="165.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="formTask1" id="BPMNShape_formTask1">
+        <omgdc:Bounds height="80.0" width="100.0" x="195.0" y="229.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="scriptTask1" id="BPMNShape_scriptTask1">
+        <omgdc:Bounds height="80.0" width="100.0" x="355.0" y="229.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="httpTask1" id="BPMNShape_httpTask1">
+        <omgdc:Bounds height="80.0" width="100.0" x="513.0" y="336.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="FormTask_1" id="BPMNShape_FormTask_1">
+        <omgdc:Bounds height="80.0" width="100.0" x="754.0" y="229.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="startnoneevent1" id="BPMNShape_startnoneevent1">
+        <omgdc:Bounds height="30.0" width="30.0" x="118.0" y="254.0"></omgdc:Bounds>
+        <bpmndi:BPMNLabel>
+          <omgdc:Bounds height="18.0" width="58.0" x="104.0" y="288.0"></omgdc:Bounds>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="endNoneEvent1" id="BPMNShape_endNoneEvent1">
+        <omgdc:Bounds height="28.0" width="28.0" x="965.0" y="255.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="sequenceFlow5" id="BPMNEdge_sequenceFlow5" flowable:sourceDockerX="50.0" flowable:sourceDockerY="40.0" flowable:targetDockerX="50.0" flowable:targetDockerY="40.0">
+        <omgdi:waypoint x="613.0" y="376.0"></omgdi:waypoint>
+        <omgdi:waypoint x="683.5" y="376.0"></omgdi:waypoint>
+        <omgdi:waypoint x="683.5" y="269.0"></omgdi:waypoint>
+        <omgdi:waypoint x="754.0" y="269.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="sequenceFlow3" id="BPMNEdge_sequenceFlow3" flowable:sourceDockerX="50.0" flowable:sourceDockerY="40.0" flowable:targetDockerX="50.0" flowable:targetDockerY="40.0">
+        <omgdi:waypoint x="455.0" y="269.0"></omgdi:waypoint>
+        <omgdi:waypoint x="754.0" y="269.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="sequenceFlow4" id="BPMNEdge_sequenceFlow4" flowable:sourceDockerX="15.0" flowable:sourceDockerY="15.0" flowable:targetDockerX="50.0" flowable:targetDockerY="40.0">
+        <omgdi:waypoint x="148.0" y="269.0"></omgdi:waypoint>
+        <omgdi:waypoint x="195.0" y="269.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="sequenceFlow2" id="BPMNEdge_sequenceFlow2" flowable:sourceDockerX="50.0" flowable:sourceDockerY="40.0" flowable:targetDockerX="50.0" flowable:targetDockerY="40.0">
+        <omgdi:waypoint x="295.0" y="269.0"></omgdi:waypoint>
+        <omgdi:waypoint x="355.0" y="269.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="SequenceFlow_2" id="BPMNEdge_SequenceFlow_2" flowable:sourceDockerX="50.0" flowable:sourceDockerY="40.0" flowable:targetDockerX="14.0" flowable:targetDockerY="14.0">
+        <omgdi:waypoint x="854.0" y="269.0"></omgdi:waypoint>
+        <omgdi:waypoint x="965.0" y="269.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
