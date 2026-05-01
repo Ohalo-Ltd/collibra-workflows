@@ -47,7 +47,7 @@ import com.collibra.dgc.core.api.dto.instance.comment.AddCommentRequest;
 import com.collibra.dgc.core.api.dto.instance.asset.SetAssetAttributesRequest;
 import com.collibra.dgc.core.api.dto.instance.attribute.AddAttributeRequest;
 import com.collibra.dgc.core.api.dto.instance.relation.AddRelationRequest;
-import groovy.json.JsonSlurper
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -62,6 +62,7 @@ def label = execution.getVariable("label")
 def requestPath = execution.getVariable("requestPath")
 def apiBaseUrl = execution.getVariable("apiBaseUrl")
 def authToken = execution.getVariable("authToken")
+def maxResults = execution.getVariable("maxResults") as Integer
 
 def addAttributeToAsset(assetUuid,attributeValue,attributeTypeUuid) {
 if (attributeValue == null){
@@ -150,65 +151,40 @@ def client = HttpClient.newHttpClient()
 def request = HttpRequest.newBuilder()
     .uri(URI.create(requestPath))
     .header("Authorization", "Bearer " + authToken)
+    .header("Accept", "application/x-ndjson")
+    .timeout(java.time.Duration.ofSeconds(60))
     .GET()
     .build()
 
-// 3. Send and handle the response
-def response = client.send(request, HttpResponse.BodyHandlers.ofString())
-
-response_body=response.body()
-
-loggerApi.info("requestPath9 : {$requestPath}")  
-loggerApi.info("response :   code: "+response.statusCode()) 
-loggerApi.info("response :   response: "+response_body) 
-
-
- 
-import groovy.json.JsonParserType
-
-//def slurper = new JsonSlurper().setType(JsonParserType.CHARACTER_SOURCE)
-//def data = slurper.parse(new File("large_file.json"))
-
-
-JsonSlurper parser = new JsonSlurper()
-json = parser.parseText(response_body)
-
-loggerApi.info("json !!!!!!::: ${json}")
-
-
-
-//json.fileName.each { fileName ->
-//      fn=fileName['fileName']
-//      loggerApi.info("FILENAME::: ${fn}")
-            //         }
-//execution.setVariable("fname",fn);
-
-def files = [['filename','path']]
-
-import com.fasterxml.jackson.databind.ObjectMapper
-def mapper = new ObjectMapper()
-def it = mapper.readerFor(Map).readValues(response_body)
-              count=0
-while (it.hasNextValue()) {
-    if (count ==20) {break }
-    def obj = it.nextValue()
-    path=obj.path
-    filename=obj.fileName
-    loggerApi.info("FILENAME::: ${filename}")
-    loggerApi.info("PATH::: ${path}")
-    files+=[[filename,path]]
-    count++
-    
+def response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
+loggerApi.info("DXR query status: " + response.statusCode())
+if (response.statusCode() >= 400) {
+    throw new RuntimeException("DXR query failed: HTTP " + response.statusCode())
 }
-loggerApi.info("FILES::: ${files}")
-              loggerApi.info("count::: ${count}")
 
-//def file = new File('output.csv')
-// Join inner lists with commas and outer list with line separators
-//file.text = files.collect { it.join(',') }.join(System.lineSeparator())
+def mapper = new ObjectMapper()
+def files = [['filename', 'path']]
+def count = 0
+def skipped = 0
 
-execution.setVariable("files",files);
-execution.setVariable("count",count);
+response.body().withCloseable { input ->
+    def records = mapper.readerFor(Map).readValues(input)
+    while (records.hasNextValue() && count < maxResults) {
+        try {
+            def obj = records.nextValue()
+            files << [obj.fileName, obj.path]
+            count++
+        } catch (Exception e) {
+            skipped++
+            loggerApi.warn("Skipping malformed JSONL record: " + e.message)
+        }
+    }
+}
+
+loggerApi.info("DXR query returned " + count + " files (skipped " + skipped + " malformed records)")
+
+execution.setVariable("files", files)
+execution.setVariable("count", count)
 
 import groovy.xml.MarkupBuilder
 
@@ -240,7 +216,7 @@ execution.setVariable("writer_ready",writer_ready);
                  ]]></script>
     </scriptTask>
     <serviceTask id="httpTask1" name="HTTP" flowable:async="true" flowable:parallelInSameTransaction="false" flowable:type="http">
-      <documentation>STUB — currently disconnected from the main flow. Reserved for replacing the inline HttpClient call in scriptTask1 with a Flowable HTTP task that uses connection ${connectionname} for auth and base URL. To activate: rewire scriptTask1 -&gt; httpTask1 -&gt; FormTask_1 (drop sequenceFlow3, keep sequenceFlow5, add an edge from scriptTask1 to httpTask1) and remove the HttpClient block from the script.</documentation>
+      <documentation>STUB — currently disconnected from the main flow. NOT a drop-in replacement for the inline HttpClient call in scriptTask1: Flowable HTTP service tasks buffer the entire response into a string-valued process variable, which defeats streaming. The DXR /api/v1/files endpoint returns JSONL, so the inline HttpClient with BodyHandlers.ofInputStream() in scriptTask1 is the correct architecture for that call. Kept as a placeholder for future non-streaming HTTP integrations against connection ${connectionname}; otherwise a candidate for deletion.</documentation>
       <extensionElements>
         <flowable:field name="requestMethod">
           <flowable:string><![CDATA[GET]]></flowable:string>
@@ -296,6 +272,7 @@ ${writer_ready}
         <flowable:formProperty id="queryDomain" name="queryDomain" type="string" default="019dcf96-233a-72e1-bf25-8398b8c9146e" readable="false" required="true"></flowable:formProperty>
         <flowable:formProperty id="apiBaseUrl" name="apiBaseUrl" type="string" default="https://collibra-demo-integration.dataxray.io" readable="false" required="true"></flowable:formProperty>
         <flowable:formProperty id="authToken" name="authToken" type="string" readable="false" required="true"></flowable:formProperty>
+        <flowable:formProperty id="maxResults" name="maxResults" type="long" default="20" readable="false" required="true"></flowable:formProperty>
         <flowable:work-form-field-validation><![CDATA[false]]></flowable:work-form-field-validation>
         <design:stencilid><![CDATA[StartNoneEvent]]></design:stencilid>
         <design:workforminputmappingtype><![CDATA[allowed]]></design:workforminputmappingtype>

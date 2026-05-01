@@ -46,6 +46,7 @@ The process is parameterised entirely via start-event form properties. **No secr
 | `apiBaseUrl`         | yes      | `https://collibra-demo-integration.dataxray.io` | DXR base URL. Override per environment.                            |
 | `requestPath`        | yes      | `/api/v1/files?q=`                             | DXR query endpoint path; the script appends a URL-encoded query.   |
 | `connectionname`     | yes      | `ohalo_noauth`                                 | Reserved for the Flowable HTTP task stub (see Roadmap).            |
+| `maxResults`         | yes      | `20`                                           | Cap on the number of JSONL records consumed from the DXR response. |
 | `query_asset_type_id`| yes      | `019dcf97-3bac-72c3-8b59-b6ddbe8a8396`         | Asset type UUID for the created Query asset. Tenant-specific.      |
 | `queryDomain`        | yes      | `019dcf96-233a-72e1-bf25-8398b8c9146e`         | Domain UUID where new Query assets are created. Tenant-specific.   |
 
@@ -55,9 +56,7 @@ The process is parameterised entirely via start-event form properties. **No secr
 
 1. **Open the project in Flowable Design / Collibra Workflow Designer.** Import `workflow/ohalo.app` (it bundles the BPMN and both forms).
 2. **Update tenant-specific UUIDs** on the start event in `ohaloprocess.bpmn` (`query_asset_type_id`, `queryDomain`), and check the asset-type / community / domain IDs referenced inside `form-labelCreation.form`.
-3. **Provide the DXR auth token.** Two options:
-   - Set `authToken` as a process variable when starting the workflow (e.g. via the Collibra UI / API).
-   - Replace the inline `HttpClient` call with the Flowable HTTP task stub (`httpTask1`) and store the credential on the `ohalo_noauth` HTTP connection — see Roadmap.
+3. **Provide the DXR auth token.** Set `authToken` as a process variable when starting the workflow (e.g. via the Collibra UI / API). The script consumes the DXR response as a JSONL stream, so the inline `HttpClient` is the right place for this call (see Roadmap).
 4. **Override `apiBaseUrl`** if you are not pointing at the demo environment.
 5. **Deploy** the workflow in Collibra:
    - `Applies To`: appropriate scope (typically `Query`).
@@ -66,10 +65,11 @@ The process is parameterised entirely via start-event form properties. **No secr
 
 ## Roadmap / known issues
 
-- The script task currently does its own `HttpClient` call; the BPMN also contains a `httpTask1` Flowable HTTP service task that is **wired but disconnected** (no incoming sequence flow). It is intentionally kept as a stub: long-term the inline call should be replaced by the HTTP task using the `${connectionname}` connection so the auth token never travels through process variables. See the `<documentation>` element on `httpTask1` for activation steps.
-- Result list is capped at 20 files (magic number in the script).
+- The script task uses an inline `HttpClient` with `BodyHandlers.ofInputStream()` to consume DXR's JSONL response incrementally via Jackson's `MappingIterator`. The `httpTask1` Flowable HTTP service task in the BPMN is **wired but disconnected** and is kept only as a placeholder for future non-streaming HTTP integrations — it is not a viable replacement for the inline call because Flowable HTTP tasks buffer the entire response into a string-valued process variable.
+- Result list is capped via the `maxResults` process variable (default `20`); raise it as needed but be aware the matched files are stored back on the Query asset as a single attribute value.
 - The HTML rendering of the results list and the way the file list is stored as an attribute both need polish.
 - Lucene query values are concatenated as strings; values containing `"` would produce malformed queries.
+- Auth token still travels through a process variable. A cleaner long-term home is a Collibra-managed secret or Flowable HTTP connection that the script reads at runtime rather than at process-start.
 
 ## License
 
